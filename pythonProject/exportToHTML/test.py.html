@@ -1,0 +1,472 @@
+<html>
+<head>
+<title>test.py</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #0033b3;}
+.s1 { color: #080808;}
+.s2 { color: #8c8c8c; font-style: italic;}
+.s3 { color: #067d17;}
+.s4 { color: #1750eb;}
+.s5 { color: #0037a6;}
+</style>
+</head>
+<body bgcolor="#ffffff">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#c0c0c0" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+test.py</font>
+</center></td></tr></table>
+<pre><span class="s0">from </span><span class="s1">lib2to3.pygram </span><span class="s0">import </span><span class="s1">pattern_symbols</span>
+<span class="s0">import </span><span class="s1">dlib</span>
+<span class="s0">import </span><span class="s1">cv2</span>
+<span class="s0">import </span><span class="s1">numpy </span><span class="s0">as </span><span class="s1">np</span>
+<span class="s0">import </span><span class="s1">csv</span>
+<span class="s0">import </span><span class="s1">datetime</span>
+<span class="s0">import </span><span class="s1">joblib</span>
+<span class="s0">import </span><span class="s1">schedule</span>
+<span class="s0">import </span><span class="s1">time</span>
+<span class="s0">import </span><span class="s1">threading</span>
+<span class="s0">import </span><span class="s1">pandas </span><span class="s0">as </span><span class="s1">pd</span>
+<span class="s0">import </span><span class="s1">csv</span>
+<span class="s0">import </span><span class="s1">mysql.connector</span>
+
+<span class="s2"># 모델 파일 경로</span>
+<span class="s1">model_filename = </span><span class="s3">'svm_model.pkl'</span>
+
+<span class="s2"># 모델 불러오기</span>
+<span class="s1">loaded_model = joblib.load(model_filename)</span>
+
+<span class="s2"># dlib 랜드마크 모델 사용</span>
+<span class="s1">detector = dlib.get_frontal_face_detector()</span>
+<span class="s1">path = </span><span class="s3">'shape_predictor_68_face_landmarks.dat'</span>
+<span class="s1">predictor = dlib.shape_predictor(path)</span>
+
+
+<span class="s1">pupil_locate_list = [[</span><span class="s3">'date'</span><span class="s1">, </span><span class="s3">'time'</span><span class="s1">, </span><span class="s3">'right_eye_x'</span><span class="s1">, </span><span class="s3">'right_eye_y'</span><span class="s1">, </span><span class="s3">'left_eye_x'</span><span class="s1">, </span><span class="s3">'left_eye_y'</span><span class="s1">]]</span>
+
+
+
+<span class="s0">def </span><span class="s1">is_close(y0, y1):  </span><span class="s2"># 눈이 감겼는지 판정하는 함수</span>
+    <span class="s0">if </span><span class="s1">abs(y0 - y1) &lt; </span><span class="s4">10</span><span class="s1">:</span>
+        <span class="s0">return True</span>
+    <span class="s0">return False</span>
+
+
+<span class="s0">def </span><span class="s1">get_center(gray_img):  </span><span class="s2"># 이치화된 눈 화상에서 눈동자의 중심을 찾다</span>
+    <span class="s1">moments = cv2.moments(gray_img, </span><span class="s0">False</span><span class="s1">)</span>
+    <span class="s0">try</span><span class="s1">:</span>
+
+        <span class="s0">return </span><span class="s1">int(moments[</span><span class="s3">'m10'</span><span class="s1">] / moments[</span><span class="s3">'m00'</span><span class="s1">]), int(moments[</span><span class="s3">'m01'</span><span class="s1">] / moments[</span><span class="s3">'m00'</span><span class="s1">])</span>
+    <span class="s0">except</span><span class="s1">:</span>
+        <span class="s0">return None</span>
+
+
+<span class="s0">def </span><span class="s1">p(img, parts, eye):</span>
+    <span class="s0">if </span><span class="s1">eye[</span><span class="s4">0</span><span class="s1">]:</span>
+        <span class="s1">cv2.circle(img, eye[</span><span class="s4">0</span><span class="s1">], </span><span class="s4">3</span><span class="s1">, (</span><span class="s4">255</span><span class="s1">, </span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">), -</span><span class="s4">1</span><span class="s1">)</span>
+    <span class="s0">if </span><span class="s1">eye[</span><span class="s4">1</span><span class="s1">]:</span>
+        <span class="s1">cv2.circle(img, eye[</span><span class="s4">1</span><span class="s1">], </span><span class="s4">3</span><span class="s1">, (</span><span class="s4">255</span><span class="s1">, </span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">), -</span><span class="s4">1</span><span class="s1">)</span>
+    <span class="s0">for </span><span class="s1">i </span><span class="s0">in </span><span class="s1">parts:</span>
+        <span class="s1">cv2.circle(img, (i.x, i.y), </span><span class="s4">3</span><span class="s1">, (</span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">, </span><span class="s4">0</span><span class="s1">), -</span><span class="s4">1</span><span class="s1">)</span>
+
+    <span class="s1">cv2.imshow(</span><span class="s3">&quot;me&quot;</span><span class="s1">, img)</span>
+
+
+<span class="s0">def </span><span class="s1">get_eye_parts(parts, left=</span><span class="s0">True</span><span class="s1">):  </span><span class="s2"># 눈 부분의 좌표를 구하다</span>
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s1">eye_parts = [</span>
+            <span class="s1">parts[</span><span class="s4">36</span><span class="s1">],</span>
+            <span class="s1">min(parts[</span><span class="s4">37</span><span class="s1">], parts[</span><span class="s4">38</span><span class="s1">], key=</span><span class="s0">lambda </span><span class="s1">x: x.y),  </span><span class="s2"># parts[37].yとparts[38].yの大きいほう</span>
+            <span class="s1">max(parts[</span><span class="s4">40</span><span class="s1">], parts[</span><span class="s4">41</span><span class="s1">], key=</span><span class="s0">lambda </span><span class="s1">x: x.y),</span>
+            <span class="s1">parts[</span><span class="s4">39</span><span class="s1">],</span>
+        <span class="s1">]</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s1">eye_parts = [</span>
+            <span class="s1">parts[</span><span class="s4">42</span><span class="s1">],</span>
+            <span class="s1">min(parts[</span><span class="s4">43</span><span class="s1">], parts[</span><span class="s4">44</span><span class="s1">], key=</span><span class="s0">lambda </span><span class="s1">x: x.y),</span>
+            <span class="s1">max(parts[</span><span class="s4">46</span><span class="s1">], parts[</span><span class="s4">47</span><span class="s1">], key=</span><span class="s0">lambda </span><span class="s1">x: x.y),</span>
+            <span class="s1">parts[</span><span class="s4">45</span><span class="s1">],</span>
+        <span class="s1">]</span>
+    <span class="s0">return </span><span class="s1">eye_parts</span>
+
+
+<span class="s0">def </span><span class="s1">get_eye_image(img, parts, left=</span><span class="s0">True</span><span class="s1">):  </span><span class="s2"># 카메라 이미지와 찾은 얼굴 좌표에서 눈 이미지를 찾아 표시하다</span>
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">True</span><span class="s1">)</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">False</span><span class="s1">)</span>
+    <span class="s1">org_x = eyes[</span><span class="s4">0</span><span class="s1">].x</span>
+    <span class="s1">org_y = eyes[</span><span class="s4">1</span><span class="s1">].y</span>
+
+    <span class="s0">if </span><span class="s1">is_close(org_y, eyes[</span><span class="s4">2</span><span class="s1">].y):</span>
+        <span class="s0">return None</span>
+    <span class="s1">eye = img[org_y:eyes[</span><span class="s4">2</span><span class="s1">].y, org_x:eyes[-</span><span class="s4">1</span><span class="s1">].x]  </span><span class="s2"># 이미지에서 눈동자 부분을 트리밍</span>
+    <span class="s2"># img[top : bottom, left : right]</span>
+    <span class="s2"># 파이썬 리스트: 마이너스 인덱스는 맨 끝에서 순서를 의미한다</span>
+
+    <span class="s1">height = eye.shape[</span><span class="s4">0</span><span class="s1">]</span>
+    <span class="s1">width = eye.shape[</span><span class="s4">1</span><span class="s1">]</span>
+    <span class="s1">resize_eye = cv2.resize(eye, (int(width * </span><span class="s4">5.0</span><span class="s1">), int(height * </span><span class="s4">5.0</span><span class="s1">)))</span>
+
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s1">cv2.imshow(</span><span class="s3">&quot;left&quot;</span><span class="s1">, resize_eye)</span>
+        <span class="s1">cv2.moveWindow(</span><span class="s3">'left'</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">200</span><span class="s1">)</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s1">cv2.imshow(</span><span class="s3">&quot;right&quot;</span><span class="s1">, resize_eye)</span>
+        <span class="s1">cv2.moveWindow(</span><span class="s3">'right'</span><span class="s1">, </span><span class="s4">350</span><span class="s1">, </span><span class="s4">200</span><span class="s1">)</span>
+
+    <span class="s0">return </span><span class="s1">eye</span>
+
+
+<span class="s0">def </span><span class="s1">get_eye_center(img, parts, left=</span><span class="s0">True</span><span class="s1">):  </span><span class="s2"># Parts에서 눈의 센터 위치를 찾아서 표시한다</span>
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">True</span><span class="s1">)</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">False</span><span class="s1">)</span>
+
+    <span class="s1">x_center = int(eyes[</span><span class="s4">0</span><span class="s1">].x + (eyes[-</span><span class="s4">1</span><span class="s1">].x - eyes[</span><span class="s4">0</span><span class="s1">].x) / </span><span class="s4">2</span><span class="s1">)</span>
+    <span class="s1">y_center = int(eyes[</span><span class="s4">1</span><span class="s1">].y + (eyes[</span><span class="s4">2</span><span class="s1">].y - eyes[</span><span class="s4">1</span><span class="s1">].y) / </span><span class="s4">2</span><span class="s1">)</span>
+
+    <span class="s1">cv2.circle(img, (x_center, y_center), </span><span class="s4">3</span><span class="s1">, (</span><span class="s4">255</span><span class="s1">, </span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">), -</span><span class="s4">1</span><span class="s1">)</span>
+    <span class="s0">return </span><span class="s1">x_center, y_center</span>
+
+
+<span class="s0">def </span><span class="s1">get_pupil_location(img, parts, left=</span><span class="s0">True</span><span class="s1">):  </span><span class="s2"># Parts에서 눈동자 위치를 찾아 표시하는 과정에서 눈의 이진화 이미지 표시</span>
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">True</span><span class="s1">)  </span><span class="s2"># 왼쪽 눈 부위의 좌표 가져오기</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">False</span><span class="s1">)  </span><span class="s2"># 오른쪽 눈 부위의 좌표 가져오기</span>
+
+    <span class="s1">org_x = eyes[</span><span class="s4">0</span><span class="s1">].x  </span><span class="s2"># 눈 부위 영상에서 원점의 x 좌표</span>
+    <span class="s1">org_y = eyes[</span><span class="s4">1</span><span class="s1">].y  </span><span class="s2"># 눈 부위 영상에서 원점의 y 좌표</span>
+
+    <span class="s0">if </span><span class="s1">is_close(org_y, eyes[</span><span class="s4">2</span><span class="s1">].y):</span>
+        <span class="s0">return None  </span><span class="s2"># 눈이 감겨있으면 None 반환</span>
+
+    <span class="s1">expand_ratio = </span><span class="s4">1.0  </span><span class="s2"># 확장 비율 설정</span>
+    <span class="s1">height = eyes[</span><span class="s4">2</span><span class="s1">].y - org_y  </span><span class="s2"># 눈 영상의 높이</span>
+    <span class="s1">width = eyes[-</span><span class="s4">1</span><span class="s1">].x - org_x  </span><span class="s2"># 눈 영상의 너비</span>
+
+    <span class="s1">expand_height = int(height * (expand_ratio - </span><span class="s4">1</span><span class="s1">) / </span><span class="s4">2</span><span class="s1">)  </span><span class="s2"># 높이에 대한 확장 크기</span>
+    <span class="s1">expand_width = int(width * (expand_ratio - </span><span class="s4">1</span><span class="s1">) / </span><span class="s4">2</span><span class="s1">)  </span><span class="s2"># 너비에 대한 확장 크기</span>
+
+    <span class="s1">eye_start_y = max(</span><span class="s4">0</span><span class="s1">, org_y - expand_height)  </span><span class="s2"># 확장된 눈 영상의 시작 y 좌표</span>
+    <span class="s1">eye_end_y = min(img.shape[</span><span class="s4">0</span><span class="s1">], eyes[</span><span class="s4">2</span><span class="s1">].y + expand_height)  </span><span class="s2"># 확장된 눈 영상의 끝 y 좌표</span>
+    <span class="s1">eye_start_x = max(</span><span class="s4">0</span><span class="s1">, org_x - expand_width)  </span><span class="s2"># 확장된 눈 영상의 시작 x 좌표</span>
+    <span class="s1">eye_end_x = min(img.shape[</span><span class="s4">1</span><span class="s1">], eyes[-</span><span class="s4">1</span><span class="s1">].x + expand_width)  </span><span class="s2"># 확장된 눈 영상의 끝 x 좌표</span>
+
+    <span class="s1">eye = img[eye_start_y:eye_end_y, eye_start_x:eye_end_x]  </span><span class="s2"># 눈 영상 확장하여 추출</span>
+
+    <span class="s1">_, threshold_eye = cv2.threshold(cv2.cvtColor(eye, cv2.COLOR_RGB2GRAY),</span>
+    <span class="s4">25</span><span class="s1">,  </span><span class="s2"># 임계값 설정</span>
+    <span class="s4">255</span><span class="s1">,  </span><span class="s2"># 이진화 결과의 최대값</span>
+    <span class="s1">cv2.THRESH_BINARY_INV)  </span><span class="s2"># 눈 영상을 이진화</span>
+
+    <span class="s1">height = threshold_eye.shape[</span><span class="s4">0</span><span class="s1">]  </span><span class="s2"># 이진화된 눈 영상의 높이</span>
+    <span class="s1">width = threshold_eye.shape[</span><span class="s4">1</span><span class="s1">]  </span><span class="s2"># 이진화된 눈 영상의 너비</span>
+
+    <span class="s1">resize_eye = cv2.resize(threshold_eye, (int(width * </span><span class="s4">5.0</span><span class="s1">), int(height * </span><span class="s4">5.0</span><span class="s1">)))  </span><span class="s2"># 눈 영상 크기 조정</span>
+
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s1">cv2.imshow(</span><span class="s3">&quot;left_threshold&quot;</span><span class="s1">, resize_eye)  </span><span class="s2"># 왼쪽 눈 이진화된 영상 표시</span>
+        <span class="s1">cv2.moveWindow(</span><span class="s3">'left_threshold'</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">300</span><span class="s1">)  </span><span class="s2"># 왼쪽 눈 창 위치 이동</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s1">cv2.imshow(</span><span class="s3">&quot;right_threshold&quot;</span><span class="s1">, resize_eye)  </span><span class="s2"># 오른쪽 눈 이진화된 영상 표시</span>
+        <span class="s1">cv2.moveWindow(</span><span class="s3">'right_threshold'</span><span class="s1">, </span><span class="s4">350</span><span class="s1">, </span><span class="s4">300</span><span class="s1">)  </span><span class="s2"># 오른쪽 눈 창 위치 이동</span>
+
+    <span class="s1">center = get_center(threshold_eye)  </span><span class="s2"># 눈동자 중심 좌표 가져오기</span>
+
+    <span class="s0">if </span><span class="s1">center:</span>
+        <span class="s1">cv2.circle(img, (center[</span><span class="s4">0</span><span class="s1">] + org_x, center[</span><span class="s4">1</span><span class="s1">] + org_y), </span><span class="s4">3</span><span class="s1">, (</span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">, </span><span class="s4">0</span><span class="s1">), -</span><span class="s4">1</span><span class="s1">)  </span><span class="s2"># 이미지에 눈동자 중심 표시</span>
+        <span class="s0">return </span><span class="s1">center[</span><span class="s4">0</span><span class="s1">] + org_x, center[</span><span class="s4">1</span><span class="s1">] + org_y  </span><span class="s2"># 눈동자 중심의 전체 이미지에서의 좌표 반환</span>
+    <span class="s0">return </span><span class="s1">center  </span><span class="s2"># 눈동자 중심을 찾지 못한 경우 None 반환</span>
+
+
+<span class="s0">def </span><span class="s1">calculate_relative_pupil_position(img, eye_center, pupil_locate, left=</span><span class="s0">True</span><span class="s1">):  </span><span class="s2"># e</span>
+    <span class="s2">&quot;&quot;&quot; 
+        눈의 중심 좌표와 눈동자 좌표에서 눈의 중앙에 대한 눈동자 상대 좌표를 구하는 함수입니다. 
+ 
+        Args: 
+            img: 분석 대상 이미지 
+            eye_center: 눈의 중심 좌표 (눈의 중앙을 기준으로 눈동자의 상대 위치를 계산하기 위함) 
+            pupil_locate: 눈동자 좌표 
+            left: 왼쪽 눈인지 여부 (기본값: True) 
+ 
+        Returns: 
+            relative_pupil_x: 눈동자의 중앙과의 상대적인 x 좌표 
+            relative_pupil_y: 눈동자의 중앙과의 상대적인 y 좌표 
+        &quot;&quot;&quot;</span>
+
+    <span class="s0">if not </span><span class="s1">eye_center:</span>
+        <span class="s0">return  </span><span class="s2"># 눈의 중심 좌표가 없을 경우 함수 종료</span>
+
+    <span class="s0">if not </span><span class="s1">pupil_locate:</span>
+        <span class="s0">return  </span><span class="s2"># 눈동자 좌표가 없을 경우 함수 종료</span>
+
+
+    <span class="s2"># 눈동자의 상대적인 x, y 좌표 계산</span>
+    <span class="s1">relative_pupil_x = pupil_locate[</span><span class="s4">0</span><span class="s1">] - eye_center[</span><span class="s4">0</span><span class="s1">]</span>
+    <span class="s1">relative_pupil_y = pupil_locate[</span><span class="s4">1</span><span class="s1">] - eye_center[</span><span class="s4">1</span><span class="s1">]</span>
+
+    <span class="s0">if </span><span class="s1">left:</span>
+        <span class="s2"># 왼쪽 눈인 경우</span>
+        <span class="s1">cv2.putText(img,</span>
+                    <span class="s3">&quot;left x=&quot; </span><span class="s1">+ str(relative_pupil_x) + </span><span class="s3">&quot; y=&quot; </span><span class="s1">+ str(relative_pupil_y),</span>
+                    <span class="s1">org=(</span><span class="s4">50</span><span class="s1">, </span><span class="s4">400</span><span class="s1">),</span>
+                    <span class="s1">fontFace=cv2.FONT_HERSHEY_SIMPLEX,</span>
+                    <span class="s1">fontScale=</span><span class="s4">1.0</span><span class="s1">,</span>
+                    <span class="s1">color=(</span><span class="s4">0</span><span class="s1">, </span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">),</span>
+                    <span class="s1">thickness=</span><span class="s4">2</span><span class="s1">,</span>
+                    <span class="s1">lineType=cv2.LINE_4)</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s2"># 오른쪽 눈인 경우</span>
+        <span class="s1">cv2.putText(img,</span>
+                    <span class="s3">&quot;right x=&quot; </span><span class="s1">+ str(relative_pupil_x) + </span><span class="s3">&quot; y=&quot; </span><span class="s1">+ str(relative_pupil_y),</span>
+                    <span class="s1">org=(</span><span class="s4">50</span><span class="s1">, </span><span class="s4">450</span><span class="s1">),</span>
+                    <span class="s1">fontFace=cv2.FONT_HERSHEY_SIMPLEX,</span>
+                    <span class="s1">fontScale=</span><span class="s4">1.0</span><span class="s1">,</span>
+                    <span class="s1">color=(</span><span class="s4">0</span><span class="s1">, </span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">),</span>
+                    <span class="s1">thickness=</span><span class="s4">2</span><span class="s1">,</span>
+                    <span class="s1">lineType=cv2.LINE_4)</span>
+
+    <span class="s0">return </span><span class="s1">relative_pupil_x, relative_pupil_y</span>
+
+
+<span class="s0">def </span><span class="s1">calculate_direction(img, parts, pupil_locate):  </span><span class="s2"># 눈동자의 위치와 눈의 좌표에서 눈동자가 향하고 있는 방향을 찾아 표시하다</span>
+    <span class="s0">if not </span><span class="s1">pupil_locate:</span>
+        <span class="s0">return</span>
+
+    <span class="s1">eyes = get_eye_parts(parts, </span><span class="s0">True</span><span class="s1">)</span>
+
+    <span class="s1">left_border = eyes[</span><span class="s4">0</span><span class="s1">].x + (eyes[</span><span class="s4">3</span><span class="s1">].x - eyes[</span><span class="s4">0</span><span class="s1">].x) / </span><span class="s4">3  </span><span class="s2"># 눈을 좌우로 삼등분했을 때 왼쪽 영역의 경계선</span>
+    <span class="s1">right_border = eyes[</span><span class="s4">0</span><span class="s1">].x + (eyes[</span><span class="s4">3</span><span class="s1">].x - eyes[</span><span class="s4">0</span><span class="s1">].x) * </span><span class="s4">2 </span><span class="s1">/ </span><span class="s4">3  </span><span class="s2"># 눈을 좌우로 삼등분했을 때 오른쪽 영역의 경계선</span>
+    <span class="s1">up_border = eyes[</span><span class="s4">1</span><span class="s1">].y + (eyes[</span><span class="s4">2</span><span class="s1">].y - eyes[</span><span class="s4">1</span><span class="s1">].y) / </span><span class="s4">3  </span><span class="s2"># 눈을 위아래로 삼등분했을 때 상존의 경계선</span>
+    <span class="s1">down_border = eyes[</span><span class="s4">1</span><span class="s1">].y + (eyes[</span><span class="s4">2</span><span class="s1">].y - eyes[</span><span class="s4">1</span><span class="s1">].y) * </span><span class="s4">2 </span><span class="s1">/ </span><span class="s4">3  </span><span class="s2"># 눈을 위아래로 삼등분했을 때 아래 구역의 경계선</span>
+
+    <span class="s0">if </span><span class="s1">eyes[</span><span class="s4">0</span><span class="s1">].x &lt;= pupil_locate[</span><span class="s4">0</span><span class="s1">] &lt; left_border:</span>
+        <span class="s2"># 눈동자는 왼쪽에 있다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;LEFT&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">50</span><span class="s1">)</span>
+    <span class="s0">elif </span><span class="s1">left_border &lt;= pupil_locate[</span><span class="s4">0</span><span class="s1">] &lt;= right_border:</span>
+        <span class="s2"># 눈동자는 가운데에 있다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;STRAIGHT&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">50</span><span class="s1">)</span>
+    <span class="s0">elif </span><span class="s1">right_border &lt;= pupil_locate[</span><span class="s4">0</span><span class="s1">] &lt;= eyes[</span><span class="s4">3</span><span class="s1">].x:</span>
+        <span class="s2"># 눈동자는 오른쪽에 있다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;RIGHT&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">50</span><span class="s1">)</span>
+    <span class="s0">else</span><span class="s1">:</span>
+        <span class="s2"># 눈동자는 어디에도 없다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;NONE&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">50</span><span class="s1">)</span>
+
+    <span class="s0">if </span><span class="s1">pupil_locate[</span><span class="s4">1</span><span class="s1">] &lt;= up_border:</span>
+        <span class="s2"># 눈동자는 위에 있다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;UP&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">100</span><span class="s1">)</span>
+    <span class="s0">elif </span><span class="s1">up_border &lt;= pupil_locate[</span><span class="s4">1</span><span class="s1">] &lt;= down_border:</span>
+        <span class="s2"># 눈동자는 중간 위치에 있다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;MIDDLE&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">100</span><span class="s1">)</span>
+    <span class="s0">elif </span><span class="s1">pupil_locate[</span><span class="s4">1</span><span class="s1">] &gt;= down_border:</span>
+        <span class="s2"># 눈동자는 아래 위치에 있다</span>
+        <span class="s1">show_text(img, </span><span class="s3">&quot;DOWN&quot;</span><span class="s1">, </span><span class="s4">50</span><span class="s1">, </span><span class="s4">100</span><span class="s1">)</span>
+
+    <span class="s0">return</span>
+
+
+<span class="s0">def </span><span class="s1">show_text(img, text, x, y):</span>
+    <span class="s1">cv2.putText(img,</span>
+                <span class="s1">text,</span>
+                <span class="s1">org=(x, y),</span>
+                <span class="s1">fontFace=cv2.FONT_HERSHEY_SIMPLEX,</span>
+                <span class="s1">fontScale=</span><span class="s4">1.0</span><span class="s1">,</span>
+                <span class="s1">color=(</span><span class="s4">0</span><span class="s1">, </span><span class="s4">255</span><span class="s1">, </span><span class="s4">0</span><span class="s1">),</span>
+                <span class="s1">thickness=</span><span class="s4">2</span><span class="s1">,</span>
+                <span class="s1">lineType=cv2.LINE_4)</span>
+    <span class="s0">return</span>
+
+<span class="s0">def </span><span class="s1">write_csv(data):  </span><span class="s2"># list 받아서 pupil_locate.csv에 보냄</span>
+    <span class="s0">if not </span><span class="s1">data:</span>
+        <span class="s0">return</span>
+
+    <span class="s0">with </span><span class="s1">open(</span><span class="s3">'pupil_locate.csv'</span><span class="s1">, </span><span class="s3">'w'</span><span class="s1">, newline=</span><span class="s3">''</span><span class="s1">) </span><span class="s0">as </span><span class="s1">f_object:</span>
+        <span class="s2"># Pass the CSV  file object to the writer() function</span>
+        <span class="s1">writer_object = csv.writer(f_object)</span>
+        <span class="s2"># Result - a writer object</span>
+        <span class="s2"># Pass the data in the list as an argument into the writerow() function</span>
+        <span class="s1">writer_object.writerows(data)</span>
+        <span class="s2"># Close the file object</span>
+        <span class="s1">print(</span><span class="s3">&quot;pupil_locate.csv&quot;</span><span class="s1">)</span>
+    <span class="s0">return</span>
+
+
+<span class="s0">def </span><span class="s1">append_pupil_locate_to_list(left_pupil_position, right_pupil_position):  </span><span class="s2"># 현재 시각, 오른쪽 눈동자 위치, 왼쪽 눈동자 위치를 list에 추가한다</span>
+
+    <span class="s2"># 왼쪽 눈동자 위치가 없는 경우, 함수 종료</span>
+    <span class="s0">if not </span><span class="s1">left_pupil_position:</span>
+        <span class="s0">return</span>
+
+    <span class="s2"># 오른쪽 눈동자 위치가 없는 경우, 함수 종료</span>
+    <span class="s0">if not </span><span class="s1">right_pupil_position:</span>
+        <span class="s0">return</span>
+
+    <span class="s2"># 현재 시각을 구한다</span>
+    <span class="s1">for_write_time = datetime.datetime.now()</span>
+
+    <span class="s2"># 현재 날짜, 시각, 왼쪽 눈동자 위치, 오른쪽 눈동자 위치를 리스트에 추가할 형식으로 정리한다</span>
+    <span class="s1">locate = [</span>
+        <span class="s1">datetime.date.today(),</span>
+        <span class="s3">&quot;{}:{}:{}&quot;</span><span class="s1">.format(for_write_time.hour, for_write_time.minute, for_write_time.second),</span>
+        <span class="s1">left_pupil_position[</span><span class="s4">0</span><span class="s1">], left_pupil_position[</span><span class="s4">1</span><span class="s1">], right_pupil_position[</span><span class="s4">0</span><span class="s1">], right_pupil_position[</span><span class="s4">1</span><span class="s1">]</span>
+    <span class="s1">]</span>
+
+    <span class="s2"># pupil_locate_list에 위치 정보를 추가한다</span>
+    <span class="s1">pupil_locate_list.append(locate)</span>
+
+    <span class="s0">return</span>
+
+
+<span class="s1">cap = cv2.VideoCapture(</span><span class="s4">0</span><span class="s1">)</span>
+
+<span class="s0">while True</span><span class="s1">:</span>
+    <span class="s1">ret, frame = cap.read()</span>
+    <span class="s1">dets = detector(frame[:, :, ::-</span><span class="s4">1</span><span class="s1">])</span>
+    <span class="s0">if </span><span class="s1">len(dets) &gt; </span><span class="s4">0</span><span class="s1">:</span>
+        <span class="s1">parts = predictor(frame, dets[</span><span class="s4">0</span><span class="s1">]).parts()</span>
+
+        <span class="s1">left_eye_image = get_eye_image(frame, parts, </span><span class="s0">True</span><span class="s1">)</span>
+        <span class="s1">right_eye_image = get_eye_image(frame, parts, </span><span class="s0">False</span><span class="s1">)</span>
+        <span class="s1">left_eye_center = get_eye_center(frame, parts, </span><span class="s0">True</span><span class="s1">)</span>
+        <span class="s1">right_eye_center = get_eye_center(frame, parts, </span><span class="s0">False</span><span class="s1">)</span>
+        <span class="s1">left_pupil_location = get_pupil_location(frame, parts, </span><span class="s0">True</span><span class="s1">)</span>
+        <span class="s1">right_pupil_location = get_pupil_location(frame, parts, </span><span class="s0">False</span><span class="s1">)</span>
+        <span class="s1">left_relative_pupil_position = calculate_relative_pupil_position(frame, left_eye_center, left_pupil_location,</span>
+                                                                         <span class="s0">True</span><span class="s1">)</span>
+        <span class="s1">right_relative_pupil_position = calculate_relative_pupil_position(frame, right_eye_center, right_pupil_location,</span>
+                                                                          <span class="s0">False</span><span class="s1">)</span>
+        <span class="s1">calculate_direction(frame, parts, left_pupil_location)</span>
+        <span class="s1">append_pupil_locate_to_list(left_relative_pupil_position, right_relative_pupil_position)</span>
+        <span class="s1">cv2.imshow(</span><span class="s3">&quot;Test&quot;</span><span class="s1">, frame)</span>
+
+    <span class="s1">key = cv2.waitKey(</span><span class="s4">1</span><span class="s1">)  </span><span class="s2"># 1밀리초 키 입력을 기다리다</span>
+
+    <span class="s0">if </span><span class="s1">key == </span><span class="s4">27</span><span class="s1">:  </span><span class="s2"># Window를 선택하신 상태에서 ESC버튼을 누르면 꺼짐</span>
+        <span class="s0">break</span>
+    <span class="s0">elif </span><span class="s1">key == ord(</span><span class="s3">'e'</span><span class="s1">):  </span><span class="s2"># E키가 눌리면 csv에 저장</span>
+        <span class="s1">write_csv(pupil_locate_list)</span>
+    <span class="s0">elif </span><span class="s1">key == ord(</span><span class="s3">'a'</span><span class="s1">):  </span><span class="s2"># A키가 눌리면 AI시작</span>
+        <span class="s0">def </span><span class="s1">test():</span>
+            <span class="s1">write_csv(pupil_locate_list)</span>
+            <span class="s1">df = pd.read_csv(</span><span class="s3">'pupil_locate.csv'</span><span class="s1">)</span>
+            <span class="s1">df.dropna(inplace=</span><span class="s0">True</span><span class="s1">)</span>
+
+            <span class="s2"># 날짜와 시간을 하나의 datetime 열로 합칩니다.</span>
+            <span class="s1">df[</span><span class="s3">'Datetime'</span><span class="s1">] = pd.to_datetime(df[</span><span class="s3">'date'</span><span class="s1">] + </span><span class="s3">' ' </span><span class="s1">+ df[</span><span class="s3">'time'</span><span class="s1">])</span>
+
+            <span class="s2"># datetime 열을 인덱스로 설정합니다.</span>
+            <span class="s1">df.set_index(</span><span class="s3">'Datetime'</span><span class="s1">, inplace=</span><span class="s0">True</span><span class="s1">)</span>
+
+            <span class="s2"># 문자열 열 제거</span>
+            <span class="s1">df = df[[</span><span class="s3">'right_eye_x'</span><span class="s1">, </span><span class="s3">'right_eye_y'</span><span class="s1">, </span><span class="s3">'left_eye_x'</span><span class="s1">, </span><span class="s3">'left_eye_y'</span><span class="s1">]].apply(pd.to_numeric, errors=</span><span class="s3">'coerce'</span><span class="s1">)</span>
+
+            <span class="s2"># NaN 값이 있는 행 제거</span>
+            <span class="s1">df.dropna(inplace=</span><span class="s0">True</span><span class="s1">)</span>
+
+            <span class="s2"># 1 분 간격으로 데이터를 샘플링하고 x와 y 값을 계산합니다.</span>
+            <span class="s1">df_resampled = df.resample(</span><span class="s3">'15S'</span><span class="s1">).mean()</span>
+
+
+            <span class="s1">df_resampled[</span><span class="s3">'right_eye_x_movement'</span><span class="s1">] = abs(df_resampled[</span><span class="s3">'right_eye_x'</span><span class="s1">].diff())</span>
+            <span class="s1">df_resampled[</span><span class="s3">'right_eye_y_movement'</span><span class="s1">] = abs(df_resampled[</span><span class="s3">'right_eye_y'</span><span class="s1">].diff())</span>
+            <span class="s1">df_resampled[</span><span class="s3">'left_eye_x_movement'</span><span class="s1">] = abs(df_resampled[</span><span class="s3">'left_eye_x'</span><span class="s1">].diff())</span>
+            <span class="s1">df_resampled[</span><span class="s3">'left_eye_y_movement'</span><span class="s1">] = abs(df_resampled[</span><span class="s3">'left_eye_y'</span><span class="s1">].diff())</span>
+
+            <span class="s2"># 첫 번째 행의 이동량은 NaN으로 나타날 수 있으므로 0으로 대체</span>
+            <span class="s1">df_resampled = df_resampled.fillna(</span><span class="s4">0</span><span class="s1">)</span>
+
+            <span class="s1">movement_data = df_resampled[</span>
+                <span class="s1">[</span><span class="s3">'right_eye_x_movement'</span><span class="s1">, </span><span class="s3">'right_eye_y_movement'</span><span class="s1">, </span><span class="s3">'left_eye_x_movement'</span><span class="s1">, </span><span class="s3">'left_eye_y_movement'</span><span class="s1">]]</span>
+
+
+            <span class="s2"># 모델에 movement 데이터 입력</span>
+            <span class="s1">predicted_labels = loaded_model.predict(movement_data)</span>
+
+            <span class="s2"># 분류 결과 출력</span>
+            <span class="s1">print(predicted_labels)</span>
+
+            <span class="s2"># 분류 결과를 df_resampled에 'target' 열로 저장</span>
+            <span class="s1">df_resampled[</span><span class="s3">'target'</span><span class="s1">] = predicted_labels</span>
+
+
+            <span class="s2"># MySQL에 저장하기 전에 percent를 계산하고 열에 추가</span>
+            <span class="s1">percent = [</span><span class="s4">80</span><span class="s1">]</span>
+
+            <span class="s0">for </span><span class="s1">label </span><span class="s0">in </span><span class="s1">predicted_labels:</span>
+                <span class="s1">last_row = percent[-</span><span class="s4">1</span><span class="s1">]</span>
+                <span class="s0">if </span><span class="s1">label == </span><span class="s4">1</span><span class="s1">:</span>
+                    <span class="s0">if </span><span class="s1">last_row &lt; </span><span class="s4">100</span><span class="s1">:</span>
+                        <span class="s1">var = last_row + </span><span class="s4">1</span>
+                    <span class="s0">elif </span><span class="s1">last_row &gt;= </span><span class="s4">100</span><span class="s1">:</span>
+                        <span class="s1">var = last_row</span>
+                <span class="s0">elif </span><span class="s1">label == </span><span class="s4">0</span><span class="s1">:</span>
+                    <span class="s0">if </span><span class="s1">last_row &gt; </span><span class="s4">0</span><span class="s1">:</span>
+                        <span class="s1">var = last_row - </span><span class="s4">1</span>
+                    <span class="s0">elif </span><span class="s1">last_row &lt;= </span><span class="s4">0</span><span class="s1">:</span>
+                        <span class="s1">var = last_row</span>
+
+                <span class="s1">percent.append(var)</span>
+            <span class="s1">print(percent)</span>
+            <span class="s1">percent.pop(</span><span class="s4">0</span><span class="s1">)</span>
+            <span class="s1">df_resampled[</span><span class="s3">'percent'</span><span class="s1">] = percent</span>
+
+            <span class="s2"># MySQL 연결 정보</span>
+            <span class="s1">db_config = {</span>
+                <span class="s3">'host'</span><span class="s1">: </span><span class="s3">'localhost'</span><span class="s1">,</span>
+                <span class="s3">'user'</span><span class="s1">: </span><span class="s3">'root'</span><span class="s1">,</span>
+                <span class="s3">'password'</span><span class="s1">: </span><span class="s3">'fhdlwp15'</span><span class="s1">,</span>
+                <span class="s3">'database'</span><span class="s1">: </span><span class="s3">'test'</span>
+            <span class="s1">}</span>
+            <span class="s2"># MySQL 연결</span>
+            <span class="s1">connection = mysql.connector.connect(**db_config)</span>
+
+            <span class="s2"># 커서 생성</span>
+            <span class="s1">cursor = connection.cursor()</span>
+
+            <span class="s2"># 테이블 리셋하는 쿼리문</span>
+            <span class="s1">reset_query = </span><span class="s3">&quot;&quot;&quot; 
+                TRUNCATE TABLE testtable 
+            &quot;&quot;&quot;</span>
+
+            <span class="s2"># 테이블 리셋 쿼리 실행</span>
+            <span class="s1">cursor.execute(reset_query)</span>
+
+            <span class="s2"># 데이터프레임을 MySQL 테이블에 삽입하는 쿼리문</span>
+            <span class="s0">for </span><span class="s1">index, row </span><span class="s0">in </span><span class="s1">df_resampled.iterrows():</span>
+                <span class="s1">insert_query = </span><span class="s3">f&quot;&quot;&quot;</span>
+                    <span class="s3">INSERT INTO testtable </span>
+                    <span class="s3">VALUES ('</span><span class="s5">{</span><span class="s1">index</span><span class="s5">}</span><span class="s3">', </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'right_eye_x'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'right_eye_y'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'left_eye_x'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'left_eye_y'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">,</span>
+                    <span class="s5">{</span><span class="s1">row[</span><span class="s3">'right_eye_x_movement'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'right_eye_y_movement'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'left_eye_x_movement'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'left_eye_y_movement'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">,</span>
+                    <span class="s5">{</span><span class="s1">row[</span><span class="s3">'target'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">row[</span><span class="s3">'percent'</span><span class="s1">]</span><span class="s5">}</span><span class="s3">)</span>
+                <span class="s3">&quot;&quot;&quot;</span>
+                <span class="s1">cursor.execute(insert_query)</span>
+
+            <span class="s2"># 변경사항 커밋</span>
+            <span class="s1">connection.commit()</span>
+
+            <span class="s2"># 연결 종료</span>
+            <span class="s1">cursor.close()</span>
+            <span class="s1">connection.close()</span>
+
+
+        <span class="s0">def </span><span class="s1">schedule_task():</span>
+            <span class="s0">while True</span><span class="s1">:</span>
+                <span class="s1">schedule.run_pending()</span>
+                <span class="s1">time.sleep(</span><span class="s4">1</span><span class="s1">)</span>
+
+
+        <span class="s1">schedule.every(</span><span class="s4">15</span><span class="s1">).seconds.do(test)</span>
+        <span class="s1">schedule_thread = threading.Thread(target=schedule_task)</span>
+        <span class="s1">schedule_thread.start()</span>
+
+
+<span class="s1">cap.release()</span>
+<span class="s1">cv2.destroyAllWindows()</span>
+</pre>
+</body>
+</html>
