@@ -58,7 +58,7 @@ def get_eye_parts(parts, left=True):  # 눈 부분의 좌표를 구하다
     if left:
         eye_parts = [
             parts[36],
-            min(parts[37], parts[38], key=lambda x: x.y),  # parts[37].yとparts[38].yの大きいほう
+            min(parts[37], parts[38], key=lambda x: x.y),
             max(parts[40], parts[41], key=lambda x: x.y),
             parts[39],
         ]
@@ -267,12 +267,8 @@ def write_csv(data):  # list 받아서 pupil_locate.csv에 보냄
         return
 
     with open('pupil_locate.csv', 'w', newline='') as f_object:
-        # Pass the CSV  file object to the writer() function
         writer_object = csv.writer(f_object)
-        # Result - a writer object
-        # Pass the data in the list as an argument into the writerow() function
         writer_object.writerows(data)
-        # Close the file object
         print("pupil_locate.csv")
     return
 
